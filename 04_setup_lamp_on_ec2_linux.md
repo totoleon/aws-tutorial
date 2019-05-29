@@ -45,20 +45,20 @@ find /var/www -type d -exec sudo chmod 2775 {} \;
 find /var/www -type f -exec sudo chmod 0664 {} \;
 ```
 Now, let the website display your message
-`echo 'Hello world' > /var/www/html/index.html`
+`echo 'Hello world' > /var/www/html/index.html`  
 
 Refresh the page, and you should be able to see the message. If you are familiar with HTML/CSS/JS, here is the place where you can put static contents to host a simple website.
 
 
 ##### 2.3 Setup database
-`sudo service mysqld start`
-`sudo mysql`
+`sudo service mysqld start`  
+`sudo mysql`  
 In mysql CLI, create a database and user for wordpress
 SQL commands:
-`CREATE DATABASE wordpress;`
-`CREATE USER 'wp_db_user'@'localhost' IDENTIFIED BY 'password'; `
-`GRANT ALL PRIVILEGES ON wordpress.* TO 'wp_db_user'@'localhost'; `
-`FLUSH PRIVILEGES;`
+`CREATE DATABASE wordpress;`  
+`CREATE USER 'wp_db_user'@'localhost' IDENTIFIED BY 'password'; `  
+`GRANT ALL PRIVILEGES ON wordpress.* TO 'wp_db_user'@'localhost'; `  
+`FLUSH PRIVILEGES;`  
 
 ### 3. Install wordpress
 Here is a simple way to put Wordpress engine behind Apache

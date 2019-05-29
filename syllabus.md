@@ -140,13 +140,6 @@ The course aims helping candidates to get started with AWS with hands on experie
 - Deploy web app 1.0 LAMP on standalone Linux instance
   - ```EC2```
   - ```VPC```
-- Cloud Design pricipals and why standalone server is bad
-  - Design for failures
-  - Loose coupling
-  - Elasticity
-  - Security
-  - Pets and cattles
-  - Choose the right service
 - Web app 2.0
   - ```IAM```
   - ```S3```
@@ -156,9 +149,29 @@ The course aims helping candidates to get started with AWS with hands on experie
   - ```ELB```
   - ```AutoScaling```
 - Comparsion and conclusion
-
 ---
-#### 6. Automation, Deployment, Infrastructure as Code
+#### 6. Cloud Design principals
+- Pets and cattle
+- Choose the right service
+- Cloud native beats self maintained
+- Design for failures
+- Least priviledge
+- Elasticity and scalability
+---
+#### 7. Cloud security
+- Shared responsibility
+- Resource level security
+- Network level security
+- Data security
+- Security enhancing services
+  - GuardDuty
+  - Cloud HSM
+  - Macie
+  - Trusted Advisor
+  - WAF and Shield
+  - Config
+---
+#### 8. Automation, Deployment, Infrastructure as Code
 - CloudFormation
   - ```Launch our web app using CloudFormation```
 - Beanstalk
@@ -171,7 +184,7 @@ The course aims helping candidates to get started with AWS with hands on experie
 - **Other tools - Ansible/Terraform*
 
 ---
-#### 7 & 8. Trendy technologies on AWS and serverless hands on
+#### 9. Trendy technologies on AWS and serverless hands on
 - Serverless
   - Lambda
   - API Gateway
@@ -190,7 +203,7 @@ The course aims helping candidates to get started with AWS with hands on experie
 - ```Serverless chat room```
 
 ---
-#### 9. Preparing for the exam
+#### 10. Preparing for the exam
 - Billing model and account managements
 - Shared responsibility
 - Security best practise
@@ -201,7 +214,7 @@ The course aims helping candidates to get started with AWS with hands on experie
 - Solution Architect associate
 
 ---
-#### 10. Job hunting focused
+#### 11. Job hunting focused
 - Cloud Practioner Mock tests
 - AWS positions and leader ship principals
 - STAR interview questions
