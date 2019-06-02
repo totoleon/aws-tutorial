@@ -54,7 +54,7 @@ Refresh the page, and you should be able to see the message. If you are familiar
 `sudo service mysqld start`  
 `sudo mysql`  
 In mysql CLI, create a database and user for wordpress
-SQL commands:
+SQL commands:  
 `CREATE DATABASE wordpress;`  
 `CREATE USER 'wp_db_user'@'localhost' IDENTIFIED BY 'password'; `  
 `GRANT ALL PRIVILEGES ON wordpress.* TO 'wp_db_user'@'localhost'; `  
@@ -65,8 +65,8 @@ Here is a simple way to put Wordpress engine behind Apache
 
 ```
 cd /var/www
-tar -xzvf latest.tar.gz 
 wget https://wordpress.org/latest.tar.gz
+tar -xzvf latest.tar.gz 
 rm -r html
 mv wordpress html
 sudo chown -R ec2-user:apache /var/www
