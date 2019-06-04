@@ -52,7 +52,7 @@ Refresh the page, and you should be able to see the message. If you are familiar
 
 ##### 2.3 Setup database
 `sudo service mysqld start`   
-`sudo chkconfig httpd on`  
+`sudo chkconfig mysqld on`  
 `sudo mysql`  
 In mysql CLI, create a database and user for wordpress
 SQL commands:  
