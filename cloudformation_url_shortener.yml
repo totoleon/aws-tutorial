@@ -1,0 +1,317 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Serverless private URL shortener based on Amazon S3, AWS Lambda, Amazon CloudFront and API Gateway.
+
+Parameters:
+  S3BucketName:
+    Type: String
+    Description: Enter the Amazon S3 bucket to use for the URL shortener, or leave empty to create a new bucket with automatically generated name. The S3 bucket is kept after you delete this template.
+  URLExpiration:
+    Type: Number
+    Default: 7
+    Description: Expiration in days for short URLs. After this delay, short URLs will be automatically deleted.
+
+Conditions:
+  CreateNewBucket: !Equals ["", !Ref S3BucketName]
+
+Outputs:
+  S3BucketName:
+    Description: "Amazon S3 bucket name holding short URLs redirect objects. Note: the bucket will not be deleted when you delete this template."
+    Value: !Ref S3BucketForURLs
+  ConnectURL:
+    Description: URL to connect to the admin page of the URL Shortener. Do not use until you update the template with the API Gateway endpoint you need to manually create.
+    Value: !Sub "https://${CloudFrontDistrib.DomainName}/admin/"
+
+Resources:
+  S3BucketForURLs:
+    Type: "AWS::S3::Bucket"
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !If [ "CreateNewBucket", !Ref "AWS::NoValue", !Ref S3BucketName ]
+      WebsiteConfiguration:
+        IndexDocument: "index.html"
+      LifecycleConfiguration:
+        Rules:
+          -
+            Id: DisposeShortUrls
+            ExpirationInDays: !Ref URLExpiration
+            Prefix: "u"
+            Status: Enabled
+
+  LambdaExecRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Policies:
+        -
+          PolicyName: LambdaExecRoleUrlShortener
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: Allow
+                Action: "logs:*"
+                Resource: "arn:aws:logs:*:*:*"
+              -
+                Effect: Allow
+                Action: [ "s3:PutObject", "s3:PutObjectACL", "s3:DeleteObject" ]
+                Resource: !Sub "arn:aws:s3:::${S3BucketForURLs}/*"
+              -
+                Effect: Allow
+                Action: "s3:ListBucket"
+                Resource: !Sub "arn:aws:s3:::${S3BucketForURLs}"
+              -
+                Effect: Allow
+                Action: [ "s3:GetObject", "s3:GetObjectAcl" ]
+                Resource: "arn:aws:s3:::*"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Sid: ""
+            Effect: Allow
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+
+  CloudFrontDistrib:
+    Type: "AWS::CloudFront::Distribution"
+    Properties:
+      DistributionConfig:
+        Origins:
+          -
+            DomainName: !GetAtt S3BucketForURLsDomain.Domain
+            Id: OriginRedirect
+            OriginPath: "/u"
+            CustomOriginConfig:
+              OriginProtocolPolicy: "http-only"
+          -
+            DomainName: !GetAtt S3BucketForURLsDomain.Domain
+            Id: OriginAdmin
+            CustomOriginConfig:
+              OriginProtocolPolicy: "http-only"
+          -
+            DomainName: !Sub "${URLShortenerAPI}.execute-api.${AWS::Region}.amazonaws.com"
+            Id: OriginAPIGW
+            CustomOriginConfig:
+              OriginProtocolPolicy: "match-viewer"
+        Comment: CloudFront distribution used as a front end to the server-less URL Shortener
+        Enabled: true
+        DefaultCacheBehavior:
+          ForwardedValues:
+            QueryString: false
+          TargetOriginId: "OriginRedirect"
+          ViewerProtocolPolicy: "redirect-to-https"
+        CacheBehaviors:
+          -
+            ForwardedValues: { QueryString: false }
+            TargetOriginId: "OriginAdmin"
+            ViewerProtocolPolicy: "redirect-to-https"
+            PathPattern: "/admin/*"
+          -
+            AllowedMethods: [ DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT ]
+            CachedMethods: [ GET, HEAD, OPTIONS ]
+            ForwardedValues:
+              Headers: [ Origin, Referer ]
+              QueryString: false
+            TargetOriginId: "OriginAPIGW"
+            ViewerProtocolPolicy: "https-only"
+            PathPattern: "/prod/*"
+
+  LambdaShortenerInvokePermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      FunctionName: !GetAtt LambdaShortener.Arn
+      Action: "lambda:InvokeFunction"
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${URLShortenerAPI}/*/POST/"
+
+  CopyAdminPage:
+    Type: "Custom::LambdaS3Copy"
+    Version: "1.0"
+    Properties:
+      ServiceToken: !GetAtt LambdaCustomResouce.Arn
+      Bucket: !Ref S3BucketForURLs
+      Key: "admin/index.html"
+      Source: "sha-public-us-west-2/URLShortener/index.html"
+  S3BucketForURLsDomain:
+    Type: "Custom::LambdaURLtoDomain"
+    Version: "1.0"
+    Properties:
+      ServiceToken: !GetAtt LambdaCustomResouce.Arn
+      APIUrl: !GetAtt S3BucketForURLs.WebsiteURL
+
+  URLShortenerAPI:
+    Type: "AWS::ApiGateway::RestApi"
+    Properties:
+      Description: Rest API for URL Shortener
+      Name: !Ref LambdaShortener
+      FailOnWarnings: true
+      Body:
+        swagger: "2.0"
+        info:
+          title: "URLShortener"
+        schemes: [ https ]
+        paths:
+          /:
+            post:
+              produces: [ "application/json" ]
+              responses: 
+                "200":
+                  description: "200 response"
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: "200"
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaShortener.Arn}/invocations"
+                passthroughBehavior: "when_no_match"
+                httpMethod: "POST"
+                type: "aws"
+
+  URLShortenerAPIDeployment:
+    Type: "AWS::ApiGateway::Deployment"
+    Properties:
+      RestApiId: !Ref URLShortenerAPI
+  URLShortenerAPIStage:
+    Type: "AWS::ApiGateway::Stage"
+    Properties:
+      StageName: "prod"
+      Description: "Prod stage"
+      RestApiId: !Ref URLShortenerAPI
+      DeploymentId: !Ref URLShortenerAPIDeployment
+
+
+  LambdaShortener:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Handler: index.handler
+      MemorySize: 384
+      Role: !GetAtt LambdaExecRole.Arn
+      Runtime: nodejs8.10
+      Timeout: 10
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref S3BucketForURLs
+          S3_REGION: !Ref AWS::Region
+          S3_PREFIX: "u"
+      Code:
+        ZipFile: |
+          'use strict';
+          // Lambda URL shortener function, called via API Gateway
+          // Creates an Amazon S3 object with random name and adds metadata for http redirect
+          const AWS = require('aws-sdk');
+          const url = require('url');
+
+          // configuration to be customized
+          const S3_Bucket = process.env['S3_BUCKET'];
+          const S3_Region = process.env['S3_REGION'];
+          const S3_Prefix = process.env['S3_PREFIX'];
+
+          // generate a 7 char shortid
+          const shortid = () => {
+            return 'xxxxxxx'.replace(/x/g, (c) => {
+              return (Math.random()*36|0).toString(36);
+            });
+          }
+
+          exports.handler = (event, context, cb) => {
+            const s3 = new AWS.S3({ region: S3_Region });
+            const url_long = event.url_long;
+            const cdn_prefix = event.cdn_prefix;
+            let retry = 0;    // try at most 3 times to create unique id
+
+            const done = (url_short, error) => {
+              cb(null, { url_long: url_long, url_short: url_short, error: error });
+            };
+
+            const check_and_create_s3_redirect = (s3_bucket, key_short, url_long) => {
+              s3.headObject({ Bucket: s3_bucket, Key: key_short }, (err, data) => {
+                if (err) {
+                  // we should normall have a NotFound error showing that the id is not already in use
+                  if (err.code === "NotFound") {
+                    // normal execution path
+                    s3.putObject({ ACL: "public-read", Bucket: s3_bucket, Key: key_short, Body: "", WebsiteRedirectLocation: url_long, ContentType: "text/plain" }, 
+                      (err, data) => {
+                        if (err) { done("", err.message); }
+                        else {
+                          const ret_url = "https://" + cdn_prefix + "/" + id_short;
+                          console.log("Success, short_url = " + ret_url);
+                          done(ret_url, "");
+                        }
+                      });
+                  } else {
+                    // treat all other errors as fatal
+                    done("", "Could not find an suitable name, error: " + err.code);
+                  }
+                } else {
+                  // we found a duplicate, let's retry a limited number of times
+                  retry += 1;
+                  if (retry <= 3) {
+                    check_and_create_s3_redirect(s3_bucket, key_short, url_long);
+                  } else {
+                    // abort after 3 tries
+                    done("", "Cannot find an unused short id, aborting." );
+                  }
+                }
+              });
+            }
+
+            // check if url is valid
+            const url_check = url.parse(url_long);
+            if (!((url_check) && (url_check.host))) { return done("", "Invalid URL format"); }
+
+            console.log("Long URL to shorten: " + url_long);
+            const id_short = shortid();
+            const key_short = S3_Prefix + "/" + id_short;
+            console.log("Short id = " + key_short);
+            check_and_create_s3_redirect(S3_Bucket, key_short, url_long);
+          };
+
+  LambdaCustomResouce:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Handler: "index.handler"
+      MemorySize: 128
+      Role: !GetAtt LambdaExecRole.Arn
+      Runtime: nodejs8.10
+      Timeout: 10
+      Code:
+        ZipFile: |
+          'use strict';
+          // Lambda helper function, CloudFormation custom resource
+          // Copy an object from an Amazon S3 bucket to another bucket
+          const AWS = require('aws-sdk');
+          const url = require('url');
+          const response = require('cfn-response');
+
+          exports.handler = (event, context, cb) => {
+            const resource_type = event.ResourceType;
+            if (resource_type === "Custom::LambdaS3Copy") {
+              const s3 = new AWS.S3();
+              const src = event.ResourceProperties.Source;
+              const bucket = event.ResourceProperties.Bucket;
+              const key = event.ResourceProperties.Key;
+              if (event.RequestType == 'Delete') {
+                s3.deleteObject({Bucket: bucket, Key: key}, (err, data) => {
+                  if (err) {
+                    response.send(event, context, response.FAILED, err);
+                  } else {
+                    response.send(event, context, response.SUCCESS);
+                  }
+                });
+              } else {
+                s3.copyObject({ACL: "public-read", CopySource: src, Bucket: bucket, Key: key}, (err, data) => {
+                  if (err) {
+                    response.send(event, context, response.FAILED, err);
+                  } else {
+                    response.send(event, context, response.SUCCESS);
+                  }
+                });
+              }
+            } else if (resource_type === "Custom::LambdaURLtoDomain") {
+              const url_check = url.parse(event.ResourceProperties.APIUrl);
+              const APIUrl = url_check.hostname || url_check.href;
+              const responseData = { Domain: APIUrl };
+              response.send(event, context, response.SUCCESS, responseData);
+            } else {
+              response.send(event, context, response.FAILED, "Unsupported resource type: " + resource_type);
+            }
+          };
